@@ -1,25 +1,159 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Course Project 1 - Reproducible Research"
+author: "Ariane Biais"
+date: "19/08/2020"
+output: html_document
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
 ## Loading and preprocessing the data
+The first work to perform is to unzip the file and to read the csv while assigning it to a variable name.
 
+```{r reading}
+unzip("activity.zip")
+data_activity<-read.csv("activity.csv")
+head(data_activity)
+```
 
+```{r dim,echo=FALSE}
+col<-dim(data_activity)[2]
+row<-dim(data_activity)[1]
+```
+The dataset has `r row` rows and `r col` columns.
 
-## What is mean total number of steps taken per day?
+For easing the further analysis, I decided to create another dataset without all missing values.
 
+```{r complete,echo=FALSE}
+good<-complete.cases(data_activity)
+complete_activity<-data_activity[good,]
+```
 
+## Calculating the mean of total number of steps per day
+```{r sum of steps}
+sum_steps<-tapply(complete_activity$steps,complete_activity$date,sum)
+```
 
-## What is the average daily activity pattern?
+The histogram of the total number of steps taken each day is created using this code :
+```{r plot}
+hist(sum_steps,main="Total steps taken each day",xlab="Sum of steps",col="red")
+```
 
+We can then add a line for the mean, and one for the median.
+```{r mean}
+mean_steps<-mean(sum_steps)
+median_steps<-median(sum_steps)
+hist(sum_steps,main="Total steps taken each day",xlab="Sum of steps",col="red")
+abline(v=median_steps,lty=2,col="black")
+```
+As the median  `r median_steps` and the mean  `r mean_steps` are quite close, we only display one line.
 
+## Average daily activity pattern
+With the dataset, I create another dataframe with only 2 colums : the mean of steps per interval, and the interval column
+
+```{r mean_interval}
+mean_interval<-tapply(complete_activity$steps,complete_activity$interval,mean)
+mean_interval<-as.data.frame(mean_interval)
+mean_interval$interval<-as.numeric(rownames(mean_interval))
+rownames(mean_interval)<-seq(1,nrow(mean_interval),by=1)
+head(mean_interval)
+```
+
+Now I create a time series plot based on this newly created datasetand add a line for the maximum value.
+```{r t-series}
+with(mean_interval,plot(interval,mean_interval,type="l",xaxp=c(0,2500,2500/100),col="green",ylab="average # of steps",main="Average number of steps across al days per 5-minute interval"))
+abline(v=mean_interval[mean_interval[,1]==max(mean_interval[,1]),2])
+max_interval<-mean_interval[mean_interval[,1]==max(mean_interval[,1]),2]
+```
+The maximum number of steps occurs at the interval `r max_interval`.
 
 ## Imputing missing values
+```{r nanb}
+na<-sum(is.na(data_activity$steps))
+```
+There are `r na` NA in the dataset for the steps column.
 
+I decided to fill the missing values by assigning them the value of steps for that day. Based on this hypothesis I created a new dataset with the missing data filled in :
+```{r impute na}
+## Creating a data frame with one row of mean of steps PER interval
+av_steps<-tapply(complete_activity$steps,complete_activity$interval,mean)
+av_steps<-data.frame(av_steps,interval=names(av_steps))
+rownames(av_steps)<-seq(1,nrow(av_steps),by=1)
 
+## Isolating the matrice of na values and replacing each NA step value by the corresponding value in the av_steps dataframe
+na_activity<-data_activity[!good,]
+for(i in av_steps$interval){
+        na_activity[na_activity$interval==i,1]<-av_steps[av_steps$interval==i,1]
+}
 
-## Are there differences in activity patterns between weekdays and weekends?
+## Merge the complete set and the na newly completed set
+data_new<-rbind(complete_activity,na_activity)
+head(data_new)
+```
+
+Now I have created a complete data set, I can rerun the code written for the first part, but by replacing the old data set with the new one.
+
+```{r total of all values}
+sum_steps_all<-tapply(data_new$steps,data_new$date,sum)
+mean_steps_all<-mean(sum_steps_all)
+median_steps_all<-median(sum_steps_all)
+hist(sum_steps_all,main="Total steps taken each day",xlab="Sum of steps",col="red")
+abline(v=mean_steps_all,lty=2,col="black")
+```
+
+The`r median_steps_all` median is now exactly equal to the `r mean_steps_all` mean. Imputing missing value as a mean has slightly increase the value of the median, but with limited effect.
+
+## Activity patterns across weekdays and weekends
+I first have to convert the date of the global dataset and list their week day value.
+```{r date}
+data_new$date<-as.Date(data_new$date,"%Y-%m-%d")
+data_wd<-weekdays(data_new$date)
+```
+
+I then add two columns : the day, and the related type.
+
+```{r date types}
+data_new$day<-data_wd
+ for(i in 1:nrow(data_new)){
+         if(data_new$day[i]=="mardi"|data_new$day[i]=="lundi"|data_new$day[i]=="mercredi"|data_new$day[i]=="jeudi"|data_new$day[i]=="vendredi"){ data_new$type_of_day[i]<-"weekday"}
+         if(data_new$day[i]=="samedi"|data_new$day[i]=="dimanche"){ data_new$type_of_day[i]<-"weekend"}
+                 head(data_new)
+}
+```
+
+After having created an horrible plot with two many points, I realized I had to once again compute the mean for each interval, but this time separating weekdays and weekends. So I reused the code for part 2, but doubling it per type of day.
+
+I just have to plot the data using the lattice package.
+
+```{r reuse}
+## Splitting the last database per type of day
+spl2<-split(data_new,data_new$type_of_day)
+data_new_weekend<-spl2[["weekend"]]
+data_new_weekday<-spl2[["weekday"]]
+
+## Reuse code from part 2, but x2
+mean_interval_weekday<-tapply(data_new_weekday$steps,data_new_weekday$interval,mean)
+mean_interval_weekend<-tapply(data_new_weekend$steps,data_new_weekend$interval,mean)
+
+mean_interval_weekend<-as.data.frame(mean_interval_weekend)
+mean_interval_weekend$interval<-as.numeric(rownames(mean_interval_weekend))
+rownames(mean_interval_weekend)<-seq(1,nrow(mean_interval_weekend),by=1)
+colnames(mean_interval_weekend)[1]<-"Average_steps"
+mean_interval_weekend$type_of_day<-rep("weekend",nrow(mean_interval_weekend))
+
+mean_interval_weekday<-as.data.frame(mean_interval_weekday)
+mean_interval_weekday$interval<-as.numeric(rownames(mean_interval_weekday))
+rownames(mean_interval_weekday)<-seq(1,nrow(mean_interval_weekday),by=1)
+colnames(mean_interval_weekday)[1]<-"Average_steps"
+mean_interval_weekday$type_of_day<-rep("weekday",nrow(mean_interval_weekday))
+
+## Binding the two
+final_data<-rbind(mean_interval_weekday,mean_interval_weekend)
+```
+
+```{r plot2}
+library(lattice)
+xyplot(Average_steps~interval|type_of_day,data=final_data,layout=c(1,2),type="l")
+```
